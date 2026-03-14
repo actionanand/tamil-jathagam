@@ -1,4 +1,6 @@
-export const NAKSHATRA = [
+import { NakshatraInfo, PlanetId } from '../models/jathagam.model';
+
+export const NAKSHATRA_NAMES = [
   'அஸ்வினி',
   'பரணி',
   'கிருத்திகை',
@@ -27,3 +29,44 @@ export const NAKSHATRA = [
   'உத்திரட்டாதி',
   'ரேவதி',
 ];
+
+const NAKSHATRA_LORDS: PlanetId[] = [
+  'Ketu',
+  'Venus',
+  'Sun',
+  'Moon',
+  'Mars',
+  'Rahu',
+  'Jupiter',
+  'Saturn',
+  'Mercury',
+  'Ketu',
+  'Venus',
+  'Sun',
+  'Moon',
+  'Mars',
+  'Rahu',
+  'Jupiter',
+  'Saturn',
+  'Mercury',
+  'Ketu',
+  'Venus',
+  'Sun',
+  'Moon',
+  'Mars',
+  'Rahu',
+  'Jupiter',
+  'Saturn',
+  'Mercury',
+];
+
+/** Each nakshatra spans 13°20' = 13.3333...° */
+const NAKSHATRA_SPAN = 360 / 27;
+
+export const NAKSHATRA: NakshatraInfo[] = NAKSHATRA_NAMES.map((name, i) => ({
+  index: i,
+  name,
+  lord: NAKSHATRA_LORDS[i],
+  startDegree: i * NAKSHATRA_SPAN,
+  endDegree: (i + 1) * NAKSHATRA_SPAN,
+}));
