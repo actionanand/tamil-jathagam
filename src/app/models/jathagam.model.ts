@@ -56,6 +56,17 @@ export interface BirthInput {
   hour: number; // 0–23
   minute: number; // 0–59
   place: Place;
+  fatherName?: string;
+  motherName?: string;
+}
+
+/** A single Dasha period */
+export interface DashaPeriod {
+  planet: PlanetId;
+  tamilName: string;
+  startDate: Date;
+  endDate: Date;
+  durationYears: number;
 }
 
 /** Complete Jathagam result */
@@ -73,4 +84,7 @@ export interface JathagamResult {
   yogam: string;
   karanam: string;
   tamilDay: string;
+  dashaSequence: DashaPeriod[];
+  fatherName?: string;
+  motherName?: string;
 }
