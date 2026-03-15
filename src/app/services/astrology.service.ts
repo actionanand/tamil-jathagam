@@ -1,6 +1,6 @@
 import { Injectable, signal } from '@angular/core';
 import * as Astronomy from 'astronomy-engine';
-import { BirthInput, JathagamResult, PlanetId, PlanetPosition } from '../models/jathagam.model';
+import { BirthInput, DashaPeriod, JathagamResult, PlanetId, PlanetPosition } from '../models/jathagam.model';
 import { RASI_NAMES } from '../data/rasi';
 import { NAKSHATRA_NAMES } from '../data/nakshatra';
 import {
@@ -41,6 +41,13 @@ const PLANET_BODIES: { id: PlanetId; body: Astronomy.Body }[] = [
   { id: 'Jupiter', body: Astronomy.Body.Jupiter },
   { id: 'Venus', body: Astronomy.Body.Venus },
   { id: 'Saturn', body: Astronomy.Body.Saturn },
+];
+
+/** Nakshatra lords in Vimshottari order (Ketu, Venus, Sun, Moon, Mars, Rahu, Jupiter, Saturn, Mercury) repeating 3x */
+const NAKSHATRA_LORDS_FOR_DASHA: PlanetId[] = [
+  'Ketu', 'Venus', 'Sun', 'Moon', 'Mars', 'Rahu', 'Jupiter', 'Saturn', 'Mercury',
+  'Ketu', 'Venus', 'Sun', 'Moon', 'Mars', 'Rahu', 'Jupiter', 'Saturn', 'Mercury',
+  'Ketu', 'Venus', 'Sun', 'Moon', 'Mars', 'Rahu', 'Jupiter', 'Saturn', 'Mercury',
 ];
 
 @Injectable({ providedIn: 'root' })
@@ -193,6 +200,9 @@ export class AstrologyService {
       yogam: YOGAM_NAMES[yogamIndex] ?? YOGAM_NAMES[0],
       karanam: KARANAM_NAMES[karanamIndex] ?? KARANAM_NAMES[0],
       tamilDay: TAMIL_DAYS[dayOfWeek],
+      dashaSequence: this.computeDasha(moon, localDate),
+      fatherName: input.fatherName,
+      motherName: input.motherName,
     });
   }
 
@@ -231,5 +241,65 @@ export class AstrologyService {
     let omega = 125.04452 - 1934.136261 * T + 0.0020708 * T * T + (T * T * T) / 450000;
     omega = normalise360(omega);
     return omega;
+  }
+
+  /**
+   * Vimshottari Dasha: 120-year cycle.
+   * Sequence: Ketu(7), Venus(20), Sun(6), Moon(10), Mars(7),
+   *           Rahu(18), Jupiter(16), Saturn(19), Mercury(17)
+   * Starting dasha is determined by Moon's nakshatra lord.
+   * Elapsed portion in birth nakshatra determines balance of first dasha.
+   */
+  private computeDasha(moon: PlanetPosition, birthDate: Date): DashaPeriod[] {
+    const DASHA_ORDER: PlanetId[] = [
+      'Ketu', 'Venus', 'Sun', 'Moon', 'Mars', 'Rahu', 'Jupiter', 'Saturn', 'Mercury',
+    ];
+    const DASHA_YEARS: Record<PlanetId, number> = {
+      Ketu: 7, Venus: 20, Sun: 6, Moon: 10, Mars: 7,
+      Rahu: 18, Jupiter: 16, Saturn: 19, Mercury: 17,
+    };
+
+    const nakSpan = 360 / 27;
+    const posInNak = moon.siderealLongitude - moon.nakshatraIndex * nakSpan;
+    const fractionElapsed = posInNak / nakSpan;
+
+    // Find the nakshatra lord in the dasha order
+    const nakLord = NAKSHATRA_LORDS_FOR_DASHA[moon.nakshatraIndex];
+    const lordIdx = DASHA_ORDER.indexOf(nakLord);
+
+    // Balance of first dasha = (1 - fractionElapsed) * total years
+    const periods: DashaPeriod[] = [];
+    let cursor = new Date(birthDate);
+    const maxDate = new Date(birthDate);
+    maxDate.setFullYear(maxDate.getFullYear() + 90);
+
+    for (let cycle = 0; cycle < 18 && cursor < maxDate; cycle++) {
+      const i = (lordIdx + cycle) % 9;
+      const planet = DASHA_ORDER[i];
+      let years = DASHA_YEARS[planet];
+
+      // First dasha: only the remaining balance
+      if (cycle === 0) {
+        years = years * (1 - fractionElapsed);
+      }
+
+      const startDate = new Date(cursor);
+      const endMs = cursor.getTime() + years * 365.25 * 86400_000;
+      const endDate = new Date(endMs);
+
+      if (startDate >= maxDate) break;
+
+      periods.push({
+        planet,
+        tamilName: PLANET_TAMIL_NAMES[planet],
+        startDate,
+        endDate: endDate > maxDate ? maxDate : endDate,
+        durationYears: Math.round(years * 100) / 100,
+      });
+
+      cursor = endDate;
+    }
+
+    return periods;
   }
 }

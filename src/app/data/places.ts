@@ -107,4 +107,11 @@ export const PLACES: Place[] = [
     longitude: 79.6946,
     timezoneOffsetHours: 5.5,
   },
+  {
+    name: 'Toronto, Canada',
+    tamilName: 'டொரொன்டோ, கனடா',
+    latitude: 43.6532,
+    longitude: -79.3832,
+    timezoneOffsetHours: -5,
+  },
 ];
