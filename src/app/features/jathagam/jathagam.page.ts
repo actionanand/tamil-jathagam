@@ -1,4 +1,4 @@
-import { Component, ChangeDetectionStrategy, inject, signal, computed } from '@angular/core';
+import { Component, ChangeDetectionStrategy, inject, computed } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { AstrologyService } from '../../services/astrology.service';
 import { PLACES } from '../../data/places';
@@ -7,12 +7,38 @@ import { PlanetTableComponent } from '../../components/planet-table.component';
 import { RASI_NAMES } from '../../data/rasi';
 import { Place } from '../../models/jathagam.model';
 
+/** Group places by territory */
+interface TerritoryGroup {
+  territory: string;
+  places: Place[];
+}
+
+function groupByTerritory(places: Place[]): { groups: TerritoryGroup[]; ungrouped: Place[] } {
+  const map = new Map<string, Place[]>();
+  const ungrouped: Place[] = [];
+  for (const p of places) {
+    if (p.territory) {
+      const arr = map.get(p.territory);
+      if (arr) arr.push(p);
+      else map.set(p.territory, [p]);
+    } else {
+      ungrouped.push(p);
+    }
+  }
+  const groups = Array.from(map.entries()).map(([territory, pl]) => ({ territory, places: pl }));
+  return { groups, ungrouped };
+}
+
 @Component({
   selector: 'app-jathagam-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [FormsModule, RasiChartComponent, PlanetTableComponent],
   styles: `
     .page { max-width: 920px; margin: 0 auto; padding: 16px; }
+    .om-header {
+      text-align: center; font-size: 0.85rem; color: #8b6914; margin-bottom: 2px;
+      letter-spacing: 1px;
+    }
     h1 { text-align: center; color: #1a1a2e; margin-bottom: 4px; }
     .subtitle { text-align: center; color: #6c757d; margin-bottom: 20px; font-size: 0.95rem; }
     .form-section {
@@ -24,6 +50,7 @@ import { Place } from '../../models/jathagam.model';
       gap: 12px; margin-bottom: 16px;
     }
     label { display: block; font-size: 0.85rem; color: #555; margin-bottom: 4px; font-weight: 500; }
+    .required-star { color: #e63946; font-weight: 700; }
     input, select {
       width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;
       font-size: 0.95rem; box-sizing: border-box;
@@ -33,12 +60,9 @@ import { Place } from '../../models/jathagam.model';
       background: #1a1a2e; color: #ffd700; border: none; padding: 10px 32px;
       border-radius: 6px; font-size: 1rem; cursor: pointer; font-weight: 600;
     }
-    .btn:hover { background: #2d2d5e; }
+    .btn:hover:not(:disabled) { background: #2d2d5e; }
     .btn:focus-visible { outline: 3px solid #ffd700; outline-offset: 2px; }
-    .toggle-link {
-      font-size: 0.85rem; color: #1a1a2e; cursor: pointer; text-decoration: underline;
-      margin-bottom: 12px; display: inline-block;
-    }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
     .charts-row { display: flex; flex-wrap: wrap; gap: 16px; justify-content: center; }
     .result-section { margin-top: 20px; }
     .info-grid {
@@ -58,9 +82,43 @@ import { Place } from '../../models/jathagam.model';
     .dasha-table td { padding: 6px; border-bottom: 1px solid #e0d8c8; }
     .dasha-table tr:nth-child(even) { background: #faf8f0; }
     .dasha-current { background: #fff3cd !important; font-weight: 600; }
+
+    /* Searchable dropdown */
+    .place-picker { position: relative; }
+    .place-search {
+      width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;
+      font-size: 0.95rem; box-sizing: border-box;
+    }
+    .place-search:focus { outline: 2px solid #bfa76a; border-color: #bfa76a; }
+    .place-dropdown {
+      position: absolute; z-index: 100; top: 100%; left: 0; right: 0;
+      max-height: 280px; overflow-y: auto; background: #fff; border: 1px solid #ccc;
+      border-top: none; border-radius: 0 0 4px 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+    }
+    .place-group-header {
+      padding: 6px 10px; font-size: 0.8rem; font-weight: 700; color: #1a1a2e;
+      background: #f0ead6; border-bottom: 1px solid #e0d8c8; position: sticky; top: 0;
+    }
+    .place-option {
+      padding: 6px 14px; cursor: pointer; font-size: 0.9rem;
+      border-bottom: 1px solid #f5f0e6;
+    }
+    .place-option:hover, .place-option.active { background: #fff3cd; }
+    .place-option-manual {
+      padding: 8px 14px; cursor: pointer; font-size: 0.9rem; font-weight: 600;
+      color: #1a1a2e; border-top: 2px solid #e0d8c8; background: #faf8f0;
+    }
+    .place-option-manual:hover { background: #fff3cd; }
+    .place-selected-tag {
+      font-size: 0.78rem; color: #6c757d; margin-top: 2px;
+    }
+    .manual-hint {
+      font-size: 0.78rem; color: #e63946; margin-top: 2px;
+    }
   `,
   template: `
     <div class="page">
+      <p class="om-header">🔱 ஓம் முருகா 🔱</p>
       <h1>🪔 தமிழ் ஜாதகம்</h1>
       <p class="subtitle">Tamil Jathagam — Offline Horoscope Calculator</p>
 
@@ -86,14 +144,52 @@ import { Place } from '../../models/jathagam.model';
             <label for="minute">நிமிடம் (Minute)</label>
             <input id="minute" type="number" [(ngModel)]="minute" min="0" max="59" />
           </div>
-          <div>
-            <label for="place">இடம் (Place)</label>
-            <select id="place" [(ngModel)]="selectedPlaceName">
-              @for (p of places; track p.name) {
-                <option [value]="p.name">{{ p.tamilName }} — {{ p.name }}</option>
-              }
-              <option value="__manual__">✏️ வேறு இடம் (Manual Entry)</option>
-            </select>
+
+          <!-- Searchable place picker -->
+          <div class="place-picker">
+            <label for="placeSearch">இடம் (Place)</label>
+            <input
+              id="placeSearch"
+              class="place-search"
+              type="text"
+              [(ngModel)]="placeSearchText"
+              (focus)="showDropdown = true"
+              (input)="onSearchInput()"
+              [placeholder]="selectedPlaceLabel()"
+              autocomplete="off"
+            />
+            @if (showDropdown) {
+              <div class="place-dropdown" role="listbox" aria-label="Places">
+                @for (g of filteredGroups(); track g.territory) {
+                  <div class="place-group-header">{{ g.territory }}</div>
+                  @for (p of g.places; track p.name) {
+                    <div class="place-option" role="option"
+                      [attr.aria-selected]="selectedPlaceName === p.name"
+                      [class.active]="selectedPlaceName === p.name"
+                      (mousedown)="selectPlace(p.name)">
+                      {{ p.tamilName }} — {{ p.name }}
+                    </div>
+                  }
+                }
+                @if (filteredUngrouped().length > 0) {
+                  <div class="place-group-header">பிற (Others)</div>
+                  @for (p of filteredUngrouped(); track p.name) {
+                    <div class="place-option" role="option"
+                      [attr.aria-selected]="selectedPlaceName === p.name"
+                      [class.active]="selectedPlaceName === p.name"
+                      (mousedown)="selectPlace(p.name)">
+                      {{ p.tamilName }} — {{ p.name }}
+                    </div>
+                  }
+                }
+                <div class="place-option-manual" (mousedown)="selectPlace('__manual__')">
+                  ✏️ வேறு இடம் (Manual Entry)
+                </div>
+              </div>
+            }
+            @if (selectedPlaceName && selectedPlaceName !== '__manual__') {
+              <div class="place-selected-tag">✔ {{ selectedPlaceLabel() }}</div>
+            }
           </div>
         </div>
 
@@ -101,23 +197,32 @@ import { Place } from '../../models/jathagam.model';
           <div class="form-grid">
             <div>
               <label for="manualName">இடம் பெயர் (Place Name)</label>
-              <input id="manualName" type="text" [(ngModel)]="manualPlaceName" placeholder="e.g. London" />
+              <input id="manualName" type="text" [(ngModel)]="manualPlaceName" placeholder="e.g. Nagercoil" />
             </div>
             <div>
-              <label for="manualTamilName">தமிழ் பெயர் (Tamil Name, optional)</label>
+              <label for="manualTamilName">தமிழ் பெயர் (Tamil Name)</label>
               <input id="manualTamilName" type="text" [(ngModel)]="manualTamilName" placeholder="optional" />
             </div>
             <div>
-              <label for="manualLat">அட்சரேகை (Latitude)</label>
-              <input id="manualLat" type="number" [(ngModel)]="manualLatitude" step="0.0001" />
+              <label for="manualLat">அட்சரேகை (Latitude) <span class="required-star">*</span></label>
+              <input id="manualLat" type="number" [(ngModel)]="manualLatitude" step="0.0001" placeholder="e.g. 51.5074" />
+              @if (manualLatitude === null || manualLatitude === undefined) {
+                <span class="manual-hint">கட்டாயம் (Required)</span>
+              }
             </div>
             <div>
-              <label for="manualLng">தீர்க்கரேகை (Longitude)</label>
-              <input id="manualLng" type="number" [(ngModel)]="manualLongitude" step="0.0001" />
+              <label for="manualLng">தீர்க்கரேகை (Longitude) <span class="required-star">*</span></label>
+              <input id="manualLng" type="number" [(ngModel)]="manualLongitude" step="0.0001" placeholder="e.g. -0.1278" />
+              @if (manualLongitude === null || manualLongitude === undefined) {
+                <span class="manual-hint">கட்டாயம் (Required)</span>
+              }
             </div>
             <div>
-              <label for="manualTz">UTC நேர வேறுபாடு (e.g. 5.5, -5)</label>
-              <input id="manualTz" type="number" [(ngModel)]="manualTimezone" step="0.5" />
+              <label for="manualTz">UTC நேர வேறுபாடு <span class="required-star">*</span></label>
+              <input id="manualTz" type="number" [(ngModel)]="manualTimezone" step="0.5" placeholder="e.g. 5.5, -5" />
+              @if (manualTimezone === null || manualTimezone === undefined) {
+                <span class="manual-hint">கட்டாயம் (Required)</span>
+              }
             </div>
           </div>
         }
@@ -133,7 +238,9 @@ import { Place } from '../../models/jathagam.model';
           </div>
         </div>
 
-        <button class="btn" (click)="generate()">ஜாதகம் கணிக்க (Generate)</button>
+        <button class="btn" (click)="generate()" [disabled]="!canGenerate()">
+          ஜாதகம் கணிக்க (Generate)
+        </button>
       </div>
 
       @if (result(); as r) {
@@ -216,6 +323,9 @@ import { Place } from '../../models/jathagam.model';
       }
     </div>
   `,
+  host: {
+    '(document:click)': 'onDocumentClick($event)',
+  },
 })
 export class JathagamPage {
   private readonly astro = inject(AstrologyService);
@@ -229,15 +339,19 @@ export class JathagamPage {
   selectedPlaceName = 'Chennai';
   fatherName = '';
   motherName = '';
+  showDropdown = false;
+  placeSearchText = '';
 
   // Manual place entry fields
   manualPlaceName = '';
   manualTamilName = '';
-  manualLatitude = 0;
-  manualLongitude = 0;
-  manualTimezone = 0;
+  manualLatitude: number | null = null;
+  manualLongitude: number | null = null;
+  manualTimezone: number | null = null;
 
   readonly result = this.astro.result;
+
+  private readonly allGrouped = groupByTerritory(this.places);
 
   readonly lagnaName = computed(() => {
     const r = this.result();
@@ -256,7 +370,80 @@ export class JathagamPage {
     return Math.floor(sidAsc / (10 / 3)) % 12;
   });
 
+  /** Filter groups & places based on search text */
+  filteredGroups(): TerritoryGroup[] {
+    const q = this.placeSearchText.trim().toLowerCase();
+    if (!q) return this.allGrouped.groups;
+
+    const result: TerritoryGroup[] = [];
+    for (const g of this.allGrouped.groups) {
+      // If search matches territory name, show all places in that territory
+      if (g.territory.toLowerCase().includes(q)) {
+        result.push(g);
+      } else {
+        const filtered = g.places.filter(
+          (p) =>
+            p.name.toLowerCase().includes(q) ||
+            p.tamilName.toLowerCase().includes(q),
+        );
+        if (filtered.length > 0) {
+          result.push({ territory: g.territory, places: filtered });
+        }
+      }
+    }
+    return result;
+  }
+
+  filteredUngrouped(): Place[] {
+    const q = this.placeSearchText.trim().toLowerCase();
+    if (!q) return this.allGrouped.ungrouped;
+    return this.allGrouped.ungrouped.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        p.tamilName.toLowerCase().includes(q),
+    );
+  }
+
+  selectedPlaceLabel(): string {
+    if (this.selectedPlaceName === '__manual__') return 'Manual Entry';
+    const p = this.places.find((pl) => pl.name === this.selectedPlaceName);
+    return p ? `${p.tamilName} — ${p.name}` : 'Select a place...';
+  }
+
+  selectPlace(name: string): void {
+    this.selectedPlaceName = name;
+    this.placeSearchText = '';
+    this.showDropdown = false;
+  }
+
+  onSearchInput(): void {
+    this.showDropdown = true;
+  }
+
+  onDocumentClick(event: Event): void {
+    const target = event.target as HTMLElement;
+    if (!target.closest('.place-picker')) {
+      this.showDropdown = false;
+    }
+  }
+
+  canGenerate(): boolean {
+    if (this.selectedPlaceName === '__manual__') {
+      return (
+        this.manualLatitude !== null &&
+        this.manualLatitude !== undefined &&
+        this.manualLongitude !== null &&
+        this.manualLongitude !== undefined &&
+        this.manualTimezone !== null &&
+        this.manualTimezone !== undefined
+      );
+    }
+    return !!this.selectedPlaceName;
+  }
+
   generate(): void {
+    if (!this.canGenerate()) return;
+
     let place: Place;
 
     if (this.selectedPlaceName === '__manual__') {
@@ -264,9 +451,9 @@ export class JathagamPage {
       place = {
         name,
         tamilName: this.manualTamilName.trim() || name,
-        latitude: this.manualLatitude,
-        longitude: this.manualLongitude,
-        timezoneOffsetHours: this.manualTimezone,
+        latitude: this.manualLatitude!,
+        longitude: this.manualLongitude!,
+        timezoneOffsetHours: this.manualTimezone!,
       };
     } else {
       place = this.places.find((p) => p.name === this.selectedPlaceName) ?? this.places[0];

@@ -1,6 +1,7 @@
 /** Place with geographic coordinates */
 export interface Place {
   name: string;
+  territory?: string; // e.g. Tamil Nadu, Kerala, Karnataka, USA, Canada, etc
   tamilName: string;
   latitude: number;
   longitude: number;
